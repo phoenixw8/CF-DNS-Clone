@@ -20,64 +20,73 @@ jobs:
       run: |
         # 创建合并文件
         MERGED_FILE="合集.txt"
+        echo "" > "$MERGED_FILE"
         
-        # 清空或创建文件
-        > $MERGED_FILE
-        
-        # 查找所有txt文件（排除合集.txt本身）
+        # 第一步：收集所有IP
+        echo "开始收集所有IP地址..."
         find . -name "*.txt" -not -name "合集.txt" -not -path "./.git/*" | while read file; do
-          # 提取每行的IP地址并写入合集
-          grep -E '^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}' "$file" >> "all_ips.txt"
+          echo "处理文件: $file"
+          grep -E '^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}' "$file" >> "all_ips.txt" || true
         done
         
-        # 处理重复IP并添加编号
-        declare -A ip_count
-        while IFS= read -r ip; do
-          if [ -n "$ip" ]; then
-            ((ip_count[$ip]++))
-            count=${ip_count[$ip]}
-            if [ $count -eq 1 ]; then
-              echo "$ip" >> "unique_ips.txt"
-            else
-              echo "${ip}${count}" >> "unique_ips.txt"
+        # 第二步：处理重复IP
+        echo "处理重复IP..."
+        if [ -f "all_ips.txt" ]; then
+          declare -A ip_count
+          while IFS= read -r ip; do
+            if [ -n "$ip" ]; then
+              ip_count["$ip"]=$((ip_count["$ip"] + 1))
+              count=${ip_count["$ip"]}
+              if [ "$count" -eq 1 ]; then
+                echo "$ip" >> "unique_ips.txt"
+              else
+                echo "${ip}${count}" >> "unique_ips.txt"
+              fi
             fi
-          fi
-        done < "all_ips.txt"
+          done < "all_ips.txt"
+        else
+          echo "没有找到任何IP地址"
+          exit 0
+        fi
         
-        # 添加国家和国旗信息
-        while IFS= read -r ip_line; do
-          if [ -n "$ip_line" ]; then
-            # 提取基础IP（去掉可能的后缀数字）
-            base_ip=$(echo "$ip_line" | grep -Eo '^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}')
-            
-            # 根据IP最后一段确定国家
-            last_octet=$(echo "$base_ip" | cut -d. -f4)
-            case $((last_octet % 10)) in
-              0) country="🇺🇸美国" ;;
-              1) country="🇨🇳中国" ;;
-              2) country="🇯🇵日本" ;;
-              3) country="🇰🇷韩国" ;;
-              4) country="🇸🇬新加坡" ;;
-              5) country="🇩🇪德国" ;;
-              6) country="🇬🇧英国" ;;
-              7) country="🇫🇷法国" ;;
-              8) country="🇨🇦加拿大" ;;
-              9) country="🇦🇺澳大利亚" ;;
-              *) country="🏴‍☠️未知" ;;
-            esac
-            
-            # 判断是否有编号后缀
-            if [[ "$ip_line" =~ [0-9]$ ]] && [[ "$ip_line" != "$base_ip" ]]; then
-              suffix="${ip_line##*[!0-9]}"
-              echo "$base_ip $country$suffix" >> $MERGED_FILE
-            else
-              echo "$ip_line $country" >> $MERGED_FILE
+        # 第三步：添加国家信息
+        echo "添加国家信息..."
+        if [ -f "unique_ips.txt" ]; then
+          while IFS= read -r ip_line; do
+            if [ -n "$ip_line" ]; then
+              # 提取基础IP
+              base_ip=$(echo "$ip_line" | grep -Eo '^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}')
+              
+              # 获取国家信息
+              last_octet=$(echo "$base_ip" | cut -d. -f4)
+              case $((last_octet % 10)) in
+                0) country="🇺🇸美国" ;;
+                1) country="🇨🇳中国" ;;
+                2) country="🇯🇵日本" ;;
+                3) country="🇰🇷韩国" ;;
+                4) country="🇸🇬新加坡" ;;
+                5) country="🇩🇪德国" ;;
+                6) country="🇬🇧英国" ;;
+                7) country="🇫🇷法国" ;;
+                8) country="🇨🇦加拿大" ;;
+                9) country="🇦🇺澳大利亚" ;;
+                *) country="🏴‍☠️未知" ;;
+              esac
+              
+              # 处理编号
+              if [[ "$ip_line" =~ ^$base_ip[0-9]+$ ]] && [ "$ip_line" != "$base_ip" ]; then
+                suffix="${ip_line#$base_ip}"
+                echo "$base_ip $country$suffix" >> "$MERGED_FILE"
+              else
+                echo "$ip_line $country" >> "$MERGED_FILE"
+              fi
             fi
-          fi
-        done < "unique_ips.txt"
+          done < "unique_ips.txt"
+        fi
         
         # 清理临时文件
         rm -f all_ips.txt unique_ips.txt
+        echo "合并完成！"
 
     - name: Commit and push merged file
       run: |
